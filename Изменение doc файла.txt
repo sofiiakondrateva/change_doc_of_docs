@@ -1,0 +1,103 @@
+// Запустить, если скрипт применяется в пустой гугл таблице
+// Копирует содержимое всей таблицы из гугл дока в первую ячейку гугл таблицы (для дальнейшего сравнения)
+function copyTableText(){
+  var ss = SpreadsheetApp.getActiveSpreadsheet();                                               // Обращаемся к активной таблице
+  var sheet = ss.getSheetByName("Весь текст таблицы");
+  var doc = DocumentApp.openById("1xVngGORvLQX5zGol9WswRYbGhe1jLsgE5Mt_oLKVi_A");    // Обращаемся к файлу "Процессы и инструкции УМИМ"
+  var table = doc.getBody().getTables()[0].getText();                                // Берем текст первой таблицы
+  sheet.getRange("A1").setValue(table);                                                 // Сохраняем текст в ячейку A1 Google таблицы
+}
+
+// Запустить, если скрипт применяется в пустой гугл таблице
+// Переносит таблицу из гугл дока в гугл таблицу, для дальнейшего сравнения и вытягивания текста
+function copyTableCells(){
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName("Таблица doc файл");
+  if(sheet != null){
+      sheet.clear();                                           // Если такой лист существует удаляем его
+  }else{
+    sheet = ss.insertSheet();
+    sheet.setName("Таблица doc файл");
+  }
+  var doc = DocumentApp.openById("1xVngGORvLQX5zGol9WswRYbGhe1jLsgE5Mt_oLKVi_A");
+  var table = doc.getBody().getTables()[0];
+  var countCell = table.getRow(0).getNumCells();
+  var countRow = table.getNumRows();
+  for(let i = 0; i < countRow; i++){
+    for(let j = 0; j < countCell; j++){
+      sheet.getRange(i+1, j+1).setNumberFormat('@STRING@');                             // устанавливает формат ячейки "обычный текст"
+      sheet.getRange(i+1, j+1).setValue(table.getCell(i,j).getText());
+    }
+    sheet.getRange(i+1, 1).setValue("string");
+  }
+}
+
+// Функция сравнивает таблицы, определяет строки, в которых внесены изменения или которые были добавлены
+// Формирует сообщение и отправляет в телегу
+function telMessage(){
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet1 = ss.getSheetByName("Весь текст таблицы");
+  var sheet2 = ss.getSheetByName("Таблица doc файл");
+  var doc = DocumentApp.openById("1xVngGORvLQX5zGol9WswRYbGhe1jLsgE5Mt_oLKVi_A");
+  
+  var tokken = "1418164540:AAE4A2rm7fhnLNDVo93hke3y6pEYZPSITAA";          // Токкен бота
+  var chatID = "-1001238848554";                                              // ID чата куда будут поступать сообщения
+  var text = "Процессы и инструкции УМИМ: В таблице произошли изменения!\n";
+  var newText = "Процессы и инструкции УМИМ: В таблице произошли изменения!\n";
+  
+  var tableDoc = doc.getBody().getTables()[0];
+  var textTable = tableDoc.getText();
+  var countCellDoc = tableDoc.getRow(0).getNumCells();
+  var countRowDoc = tableDoc.getNumRows();
+  var dataRange = sheet2.getRange("A:A").getValues();
+  var countRowSheet = dataRange.filter(String).length;
+  var row = 1;
+  var column;
+  var count;
+  var array = [];
+  if(textTable != sheet1.getRange(1, 1).getValue()){
+    sheet1.getRange(1, 1).setValue(textTable);
+    for(let i = 1; i < countRowDoc; i++){
+      var check = false;
+      var count = 1;
+      var column = 2;
+      for(let j = 1; j < countCellDoc-1; j++){
+        if(tableDoc.getCell(i, 1).getText() != sheet2.getRange(row, column).getValue()){
+          for(let search = row; search <= countRowSheet; search++){
+            if(tableDoc.getCell(i, j).getText() != sheet2.getRange(search, column).getValue()){
+              check = true; count++;
+            } else {check = false; break;}
+          }
+        }
+        column++;
+        if(check == true || (check == false && count!=1)){break;}
+      }
+      if(check == false && count != 1){i--; row++}
+      if((check == true && count != 1) || row>countRowSheet){array.push(i);}
+      if(count==1){row++;}
+    }
+    if(array.length > 0){
+      for(let arr = 0; arr < array.length; arr++){
+        if(tableDoc.getCell(array[arr], 1).getText()!=""){
+          newText += "Пункт " + tableDoc.getCell(array[arr], 0).getText() + " " +
+            tableDoc.getCell(array[arr], 1).getText() + "\n";
+        }
+      }
+    }
+    sheet2.clear();
+    for(let i = 0; i < countRowDoc; i++){
+      for(let j = 0; j < countCellDoc; j++){
+        sheet2.getRange(i+1, j+1).setNumberFormat('@STRING@');
+        sheet2.getRange(i+1, j+1).setValue(tableDoc.getCell(i, j).getText());
+      }
+      sheet2.getRange(i+1, 1).setValue("string");
+    }
+    if(newText != text){
+      Logger.log(newText);
+      newText = encodeURIComponent(newText);
+      var url = "https://api.telegram.org/bot" + tokken + "/sendMessage?chat_id=" + chatID + "&text=" + newText;
+      //Logger.log(url);
+      UrlFetchApp.fetch(url).getContentText();
+    }
+  }
+}
